@@ -1,5 +1,5 @@
 from datasets import load_dataset
-
+import json
 ds = load_dataset("JoeYing/ReTool-SFT")["train"]
 
 
@@ -29,3 +29,10 @@ def convert(sample):
 
 ds = ds.map(convert)
 ds.to_parquet("./data/retool/ReTool-SFT.parquet")
+
+with open("./data/retool/ReTool-SFT.json", "w") as f:
+    json.dump(list(ds), f, indent=4)
+
+with open("./data/retool/ReTool-SFT.jsonl", "w") as f:
+    for item in ds:
+        f.write(json.dumps(item) + "\n")
