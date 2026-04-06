@@ -6,6 +6,7 @@ import multiprocessing
 import os
 import random
 import socket
+import time
 
 import httpx
 
@@ -37,6 +38,28 @@ def is_port_available(port):
             return False
         except OverflowError:
             return False
+
+
+def wait_for_server_ready(
+    host: str,
+    port: int,
+    process: "multiprocessing.Process | None" = None,
+    timeout: float = 30,
+) -> None:
+    """Poll until a TCP port is accepting connections.
+
+    Raises ``RuntimeError`` if the process dies or the timeout is exceeded.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if process is not None and not process.is_alive():
+            raise RuntimeError(f"Server process died before port {port} became ready")
+        try:
+            with socket.create_connection((host, port), timeout=1):
+                return
+        except OSError:
+            time.sleep(0.5)
+    raise RuntimeError(f"Server at {host}:{port} not ready after {timeout}s")
 
 
 def get_host_info():
@@ -274,13 +297,9 @@ async def post(url, payload, max_retries=60, action="post"):
     # If distributed mode is enabled and actors exist, dispatch via Ray.
     if _distributed_post_enabled and _post_actors:
         try:
-            import ray
-
             actor = _next_actor()
             if actor is not None:
-                # Use a thread to avoid blocking the event loop on ray.get
-                obj_ref = actor.do_post.remote(url, payload, max_retries, action=action)
-                return await asyncio.to_thread(ray.get, obj_ref)
+                return await actor.do_post.remote(url, payload, max_retries, action=action)
         except Exception as e:
             logger.info(f"[http_utils] Distributed POST failed, falling back to local: {e} (url={url})")
             # fall through to local
